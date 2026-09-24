@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
+	"net/http"
 )
 
 type Station struct {
@@ -9,12 +10,16 @@ type Station struct {
 	URL  string `json:"url_resolved"`
 }
 
-func main() {
-	s := Station{
-		Name: "kessoku band radio",
-		URL:  "https://example.com/stream",
+func getStations() ([]Station, error) {
+	resp, err := http.Get("https://de1.api.radio-browser.info/json/stations/bytag/j-rock")
+	if err != nil {
+		return nil, err
 	}
+	defer resp.Body.Close()
+	var stations []Station
 
-	fmt.Println("station name:", s.Name)
-	fmt.Println("stream url:", s.URL)
+	if err := json.NewDecoder(resp.Body).Decode(&stations); err != nil {
+		return nil, err
+	}
+	return stations, nil
 }
