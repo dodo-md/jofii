@@ -1,4 +1,4 @@
-module jofii
+module github.com/dodo-md/jofii
 
 go 1.27.1
 
