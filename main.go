@@ -18,11 +18,14 @@ type pageLoaded struct {
 
 type loadFailed struct{ err error }
 
+type playbackEnded struct{ gen int }
+
 type model struct {
 	player   *Player
 	stations []Station
 	offset   int
 	index    int
+	gen      int
 	loading  bool
 	err      error
 	width    int
@@ -64,6 +67,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 		}
 		return m, nil
+	case playbackEnded:
+		if msg.gen != m.gen || m.loading || m.player.Paused() {
+			return m, nil
+		}
+		return m.next()
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -123,12 +131,23 @@ func (m model) play(i int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.index = i
-	if err := m.player.Play(m.stations[i].URL); err != nil {
+	gen, err := m.player.Play(m.stations[i].URL)
+	if err != nil {
 		m.err = err
 		return m, nil
 	}
+	m.gen = gen
 	m.err = nil
-	return m, nil
+	return m, waitExit(m.player, gen)
+}
+
+func waitExit(p *Player, gen int) tea.Cmd {
+	return func() tea.Msg {
+		if !p.Wait(gen) {
+			return nil
+		}
+		return playbackEnded{gen}
+	}
 }
 
 func (m model) prev() (tea.Model, tea.Cmd) {

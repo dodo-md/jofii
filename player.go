@@ -15,22 +15,23 @@ type Player struct {
 	done   chan struct{}
 	url    string
 	paused bool
+	gen    int
 }
 
-func (p *Player) Play(url string) error {
+func (p *Player) Play(url string) (int, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if _, err := exec.LookPath("mpv"); err != nil {
-		return errors.New("mpv not found. install it first (brew install mpv)")
+		return 0, errors.New("mpv not found. install it first (brew install mpv)")
 	}
 	p.kill()
 
-	cmd := exec.Command("mpv", "--no-video", "--no-terminal", "--really-quiet", url)
+	cmd := exec.Command("mpv", "--no-video", "--no-terminal", "--really-quiet", "--ytdl=no", url)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
-		return err
+		return 0, err
 	}
 
 	done := make(chan struct{})
@@ -43,7 +44,23 @@ func (p *Player) Play(url string) error {
 	p.done = done
 	p.url = url
 	p.paused = false
-	return nil
+	return p.gen, nil
+}
+
+func (p *Player) Wait(gen int) bool {
+	p.mu.Lock()
+	if p.gen != gen || p.done == nil {
+		p.mu.Unlock()
+		return false
+	}
+	done := p.done
+	p.mu.Unlock()
+
+	<-done
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.gen == gen && !p.paused
 }
 
 func (p *Player) Stop() {
@@ -64,7 +81,8 @@ func (p *Player) Toggle() error {
 		if url == "" {
 			return nil
 		}
-		return p.Play(url)
+		_, err := p.Play(url)
+		return err
 	}
 	p.Pause()
 	return nil
@@ -87,6 +105,7 @@ func (p *Player) Paused() bool {
 }
 
 func (p *Player) kill() {
+	p.gen++
 	if p.cmd == nil || p.cmd.Process == nil {
 		p.cmd = nil
 		p.done = nil
